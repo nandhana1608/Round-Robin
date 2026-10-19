@@ -1,0 +1,111 @@
+def run_rr_with_overhead(processes, time_quantum, overhead):
+    n = len(processes)
+    procs = sorted([p.copy() for p in processes], key=lambda x: x['arrival'])
+    for p in procs:
+        p['remaining'] = p['burst']
+        p['completion'] = 0
+        p['turnaround'] = 0
+        p['waiting'] = 0
+        p['response'] = -1
+
+    ready_queue = []
+    gantt_chart = []
+
+    time = 0
+    idx = 0
+    while idx < n and procs[idx]['arrival'] <= time:
+        ready_queue.append(procs[idx])
+        idx += 1
+
+    last_pid = None
+    context_switches = 0
+    total_overhead = 0
+
+    while any(p['remaining'] > 0 for p in procs):
+        if not ready_queue:
+            time = procs[idx]['arrival']
+            while idx < n and procs[idx]['arrival'] <= time:
+                ready_queue.append(procs[idx])
+                idx += 1
+            last_pid = None
+            continue
+
+        curr = ready_queue.pop(0)
+
+        # Apply context switching overhead if switching to a different process
+        if last_pid is not None and last_pid != curr['pid']:
+            gantt_chart.append(('CS', time, time + overhead))
+            time += overhead
+            total_overhead += overhead
+            context_switches += 1
+
+        if curr['response'] == -1:
+            curr['response'] = time - curr['arrival']
+
+        exec_time = min(time_quantum, curr['remaining'])
+        gantt_chart.append((curr['pid'], time, time + exec_time))
+
+        time += exec_time
+        curr['remaining'] -= exec_time
+        last_pid = curr['pid']
+
+        while idx < n and procs[idx]['arrival'] <= time:
+            if procs[idx] not in ready_queue and procs[idx]['remaining'] > 0:
+                ready_queue.append(procs[idx])
+            idx += 1
+
+        if curr['remaining'] > 0:
+            ready_queue.append(curr)
+        else:
+            curr['completion'] = time
+            curr['turnaround'] = curr['completion'] - curr['arrival']
+            curr['waiting'] = curr['turnaround'] - curr['burst']
+
+    total_time = time
+    cpu_efficiency = ((total_time - total_overhead) / total_time) * 100 if total_time > 0 else 0
+    avg_tat = sum(p['turnaround'] for p in procs) / n
+    avg_wt = sum(p['waiting'] for p in procs) / n
+
+    return procs, gantt_chart, avg_tat, avg_wt, context_switches, total_overhead, cpu_efficiency, total_time
+
+# Climate Emergency Service Dataset
+activity2_data = [
+    {'pid': 'P1', 'arrival': 0, 'burst': 5, 'task': 'Flood-warning analysis'},
+    {'pid': 'P2', 'arrival': 1, 'burst': 4, 'task': 'Air-quality alert generation'},
+    {'pid': 'P3', 'arrival': 2, 'burst': 3, 'task': 'Emergency evacuation-route update'},
+    {'pid': 'P4', 'arrival': 3, 'burst': 2, 'task': 'Renewable-grid status monitoring'}
+]
+
+print("=== PRACTICAL ACTIVITY 2: ROUND ROBIN WITH OVERHEAD ===")
+results = {}
+
+for tq in [2, 4]:
+    procs, gantt, avg_tat, avg_wt, ctx, overhead, efficiency, tot_time = run_rr_with_overhead(activity2_data, tq, overhead=1)
+    results[tq] = {
+        'gantt': gantt, 'avg_tat': avg_tat, 'avg_wt': avg_wt,
+        'ctx': ctx, 'overhead': overhead, 'efficiency': efficiency,
+        'tot_time': tot_time, 'procs': procs
+    }
+
+    print(f"\n--- Time Quantum = {tq} ms (Overhead = 1 ms) ---")
+    print("Gantt Chart Sequence:", " -> ".join([f"{item[0]} ({item[1]}-{item[2]})" for item in gantt]))
+    print(f"Total Context Switches: {ctx}")
+    print(f"Total Context Switching Overhead: {overhead} ms")
+    print(f"CPU Efficiency: {efficiency:.2f}% (Total Time: {tot_time} ms)")
+    print(f"Average Turnaround Time: {avg_tat:.2f} ms")
+    print(f"Average Waiting Time: {avg_wt:.2f} ms")
+
+    print("\nProcess Breakdown:")
+    print(f"{'Process':<10}{'Completion':<12}{'Turnaround':<12}{'Waiting':<10}{'Response'}")
+    for p in sorted(procs, key=lambda x: x['pid']):
+        print(f"{p['pid']:<10}{p['completion']:<12}{p['turnaround']:<12}{p['waiting']:<10}{p['response']}")
+
+# Comparison Summary Table
+print("\n=== COMPARISON SUMMARY TABLE ===")
+print(f"{'Metric':<35}{'Time Quantum = 2 ms':<22}{'Time Quantum = 4 ms'}")
+print("-" * 75)
+print(f"{'Average Turnaround Time (ms)':<35}{results[2]['avg_tat']:<22.2f}{results[4]['avg_tat']:.2f}")
+print(f"{'Average Waiting Time (ms)':<35}{results[2]['avg_wt']:<22.2f}{results[4]['avg_wt']:.2f}")
+print(f"{'Total Context Switches':<35}{results[2]['ctx']:<22}{results[4]['ctx']}")
+print(f"{'Total Overhead (ms)':<35}{results[2]['overhead']:<22}{results[4]['overhead']}")
+print(f"{'CPU Efficiency (%)':<35}{results[2]['efficiency']:<22.2f}{results[4]['efficiency']:.2f}")
