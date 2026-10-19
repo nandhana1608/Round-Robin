@@ -1,0 +1,86 @@
+def run_rr_without_overhead(processes, time_quantum):
+    # processes: list of dicts with 'pid', 'arrival', 'burst'
+    n = len(processes)
+    queue = []
+    time = 0
+    completed = 0
+
+    # Sort processes by arrival time initially
+    procs = sorted([p.copy() for p in processes], key=lambda x: x['arrival'])
+    for p in procs:
+        p['remaining'] = p['burst']
+        p['completion'] = 0
+        p['turnaround'] = 0
+        p['waiting'] = 0
+        p['response'] = -1
+
+    ready_queue = []
+    gantt_chart = []
+
+    # Add processes that arrive at time 0
+    idx = 0
+    while idx < n and procs[idx]['arrival'] <= time:
+        ready_queue.append(procs[idx])
+        idx += 1
+
+    while completed < n:
+        if not ready_queue:
+            # CPU is idle, jump to next arrival
+            time = procs[idx]['arrival']
+            while idx < n and procs[idx]['arrival'] <= time:
+                ready_queue.append(procs[idx])
+                idx += 1
+            continue
+
+        curr = ready_queue.pop(0)
+
+        if curr['response'] == -1:
+            curr['response'] = time - curr['arrival']
+
+        exec_time = min(time_quantum, curr['remaining'])
+        gantt_chart.append((curr['pid'], time, time + exec_time))
+
+        time += exec_time
+        curr['remaining'] -= exec_time
+
+        # Check newly arrived processes during execution
+        while idx < n and procs[idx]['arrival'] <= time:
+            # Avoid duplicate additions if already in ready_queue or completed
+            if procs[idx] not in ready_queue and procs[idx]['remaining'] > 0:
+                ready_queue.append(procs[idx])
+            idx += 1
+
+        if curr['remaining'] > 0:
+            ready_queue.append(curr)
+        else:
+            curr['completion'] = time
+            curr['turnaround'] = curr['completion'] - curr['arrival']
+            curr['waiting'] = curr['turnaround'] - curr['burst']
+            completed += 1
+
+    total_context_switches = len(gantt_chart) - 1
+    avg_tat = sum(p['turnaround'] for p in procs) / n
+    avg_wt = sum(p['waiting'] for p in procs) / n
+
+    return procs, gantt_chart, avg_tat, avg_wt, total_context_switches
+
+# Dataset for Activity 1
+activity1_data = [
+    {'pid': 'P1', 'arrival': 0, 'burst': 5},
+    {'pid': 'P2', 'arrival': 1, 'burst': 3},
+    {'pid': 'P3', 'arrival': 2, 'burst': 4},
+    {'pid': 'P4', 'arrival': 3, 'burst': 2}
+]
+
+print("=== PRACTICAL ACTIVITY 1 RESULTS ===")
+for tq in [2, 3]:
+    procs, gantt, avg_tat, avg_wt, ctx = run_rr_without_overhead(activity1_data, tq)
+    print(f"\n--- Time Quantum = {tq} ms ---")
+    print("Gantt Chart Sequence:", " -> ".join([f"{item[0]} ({item[1]}-{item[2]})" for item in gantt]))
+    print(f"Total Context Switches: {ctx}")
+    print(f"Average Turnaround Time: {avg_tat:.2f} ms")
+    print(f"Average Waiting Time: {avg_wt:.2f} ms")
+    print("\nProcess Breakdown:")
+    print(f"{'Process':<10}{'Completion':<12}{'Turnaround':<12}{'Waiting':<10}{'Response'}")
+    for p in sorted(procs, key=lambda x: x['pid']):
+        print(f"{p['pid']:<10}{p['completion']:<12}{p['turnaround']:<12}{p['waiting']:<10}{p['response']}")
